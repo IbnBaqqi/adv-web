@@ -20,8 +20,7 @@ const BUTTON_BASE_CLASSES =
 const BUTTON_ENABLED_CLASSES =
   "bg-brand-primary text-white hover:bg-brand-dark/80 shadow-soft";
 
-const BUTTON_DISABLED_CLASSES =
-  "cursor-not-allowed opacity-50";
+const BUTTON_DISABLED_CLASSES = "cursor-not-allowed opacity-50";
 
 function addButton({ label, type = "button", value, classes = "" }) {
   const btn = document.createElement("button");
@@ -129,6 +128,27 @@ function isResourceNameValid(value) {
   return lengthValid && charactersValid;
 }
 
+function isResourceDescriptionValid(value) {
+  const trimmed = value.trim();
+
+  const allowedPattern = /^[a-zA-Z0-9äöåÄÖÅ ]+$/;
+
+  const lengthValid = trimmed.length >= 10 && trimmed.length <= 50;
+  const charactersValid = allowedPattern.test(trimmed);
+
+  return lengthValid && charactersValid;
+}
+
+function isResourcePriceValid(value) {
+  if (value === "") return false;
+
+  const number = parseFloat(value);
+
+  if (isNaN(number)) return false;
+
+  return number >= 0;
+}
+
 function setInputVisualState(input, state) {
   // Reset to neutral base state (remove only our own validation-related classes)
   input.classList.remove(
@@ -139,7 +159,7 @@ function setInputVisualState(input, state) {
     "bg-red-100",
     "focus:ring-red-500/30",
     "focus:border-brand-blue",
-    "focus:ring-brand-blue/30"
+    "focus:ring-brand-blue/30",
   );
 
   // Ensure base focus style is present when neutral
@@ -147,33 +167,64 @@ function setInputVisualState(input, state) {
   input.classList.add("focus:ring-2");
 
   if (state === "valid") {
-    input.classList.add("border-green-500", "bg-green-100", "focus:ring-green-500/30");
+    input.classList.add(
+      "border-green-500",
+      "bg-green-100",
+      "focus:ring-green-500/30",
+    );
   } else if (state === "invalid") {
-    input.classList.add("border-red-500", "bg-red-100", "focus:ring-red-500/30");
+    input.classList.add(
+      "border-red-500",
+      "bg-red-100",
+      "focus:ring-red-500/30",
+    );
   } else {
     // neutral: keep base border/bg; nothing else needed
   }
 }
 
-function attachResourceNameValidation(input) {
+function attachFormValidation(nameInput, descriptionInput, priceInput) {
+  
   const update = () => {
-    const raw = input.value;
-    if (raw.trim() === "") {
-      setInputVisualState(input, "neutral");
-      setButtonEnabled(createButton, false);
-      return;
+    const nameRaw = nameInput.value;
+    const descRaw = descriptionInput.value;
+    const priceRaw = priceInput.value;
+
+    const nameTrimmed = nameRaw.trim();
+    const descTrimmed = descRaw.trim();
+
+    const nameValid = nameTrimmed !== "" && isResourceNameValid(nameRaw);
+    const descValid = descTrimmed !== "" && isResourceDescriptionValid(descRaw);
+
+    const priceValid = isResourcePriceValid(priceRaw);
+
+    // Visual states
+    if (nameTrimmed === "") {
+      setInputVisualState(nameInput, "neutral");
+    } else {
+      setInputVisualState(nameInput, nameValid ? "valid" : "invalid");
     }
 
-    const valid = isResourceNameValid(raw);
+    if (descTrimmed === "") {
+      setInputVisualState(descriptionInput, "neutral");
+    } else {
+      setInputVisualState(descriptionInput, descValid ? "valid" : "invalid");
+    }
 
-    setInputVisualState(input, valid ? "valid" : "invalid");
-    setButtonEnabled(createButton, valid);
+    if (priceRaw === "") {
+      setInputVisualState(priceInput, "neutral");
+    } else {
+      setInputVisualState(priceInput, priceValid ? "valid" : "invalid");
+    }
+
+    // Enable Create ONLY if both valid
+    setButtonEnabled(createButton, nameValid && descValid && priceValid);
   };
 
-  // Real-time validation
-  input.addEventListener("input", update);
+  nameInput.addEventListener("input", update);
+  descriptionInput.addEventListener("input", update);
+  priceInput.addEventListener("input", update);
 
-  // Initialize state on page load (Create disabled until valid)
   update();
 }
 
@@ -184,4 +235,6 @@ renderActionButtons(role);
 
 // Create + validate input
 const resourceNameInput = createResourceNameInput(resourceNameContainer);
-attachResourceNameValidation(resourceNameInput);
+const resourceDescriptionInput = document.getElementById("resourceDescription");
+const priceInput = document.getElementById("resourcePrice");
+attachFormValidation(resourceNameInput, resourceDescriptionInput, priceInput);

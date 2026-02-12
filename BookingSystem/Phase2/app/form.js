@@ -30,13 +30,18 @@ async function onSubmit(event) {
   const submitter = event.submitter;
   const actionValue = submitter && submitter.value ? submitter.value : "create";
   const payload = {
-    action: actionValue,
-    resourceName: $("resourceName")?.value ?? "",
-    resourceDescription: $("resourceDescription")?.value ?? "",
-    resourceAvailable: $("resourceAvailable")?.value ?? "",
-    resourcePrice: $("resourcePrice")?.value ?? "",
-    resourcePriceUnit: $("resourcePriceUnit")?.value ?? ""
-  };
+  action: actionValue,
+  resourceName: $("resourceName")?.value.trim() ?? "",
+  resourceDescription: $("resourceDescription")?.value.trim() ?? "",
+  resourceAvailable: $("resourceAvailable")?.checked ?? false,
+  resourcePrice: parseFloat($("resourcePrice")?.value ?? "0"),
+  resourcePriceUnit: document.querySelector("input[name='resourcePriceUnit']:checked")?.value ?? "hour"
+};
+
+if (!payload.resourceName || !payload.resourceDescription || payload.resourcePrice < 0 || isNaN(payload.resourcePrice)) {
+  console.warn("Invalid payload. Submission blocked.");
+  return;
+}
 
   logSection("Sending payload to httpbin.org/post", payload);
 
