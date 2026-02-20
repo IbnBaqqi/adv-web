@@ -62,14 +62,6 @@ function setButtonEnabled(btn, enabled) {
 }
 
 function renderActionButtons(currentRole) {
-  if (currentRole === "reserver") {
-    createButton = addButton({
-      label: "Create",
-      type: "submit",
-      classes: BUTTON_ENABLED_CLASSES,
-    });
-  }
-
   if (currentRole === "admin") {
     createButton = addButton({
       label: "Create",
@@ -80,12 +72,14 @@ function renderActionButtons(currentRole) {
 
     updateButton = addButton({
       label: "Update",
+      type: "submit",
       value: "update",
       classes: BUTTON_ENABLED_CLASSES,
     });
 
     deleteButton = addButton({
       label: "Delete",
+      type: "submit",
       value: "delete",
       classes: BUTTON_ENABLED_CLASSES,
     });
