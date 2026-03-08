@@ -1,5 +1,4 @@
 require("dotenv").config();
-const crypto = require('crypto');
 const express = require("express");
 const app = express();
 const PORT = process.env.IPORT;
@@ -37,39 +36,47 @@ const pool = new Pool({});
 // --- express-validator rules for the payload ---
 const resourceValidators = [
   body('action')
-    .exists({ checkFalsy: true }).withMessage('action is required')
+    .exists().withMessage('action is required')
     .trim()
+    .notEmpty().withMessage('action cannot be empty')
     .isIn(['create'])
     .withMessage("action must be 'create'"),
 
   body('resourceName')
-    .exists({ checkFalsy: true }).withMessage('resourceName is required')
+    .exists().withMessage('resourceName is required')
     .isString().withMessage('resourceName must be a string')
     .trim()
+    .notEmpty().withMessage('resourceName cannot be empty')
+    .isLength({ min: 1, max: 50 }).withMessage('resourceName must be 1-50 characters')
+    .matches(/^[a-zA-Z0-9\s\-_]+$/).withMessage('resourceName contains invalid characters')
     .escape(),
 
   body('resourceDescription')
-    .exists({ checkFalsy: true }).withMessage('resourceDescription is required')
+    .exists().withMessage('resourceDescription is required')
     .isString().withMessage('resourceDescription must be a string')
     .trim()
-    .isLength({ min:10, max: 50 }).withMessage('resourceDescription must be 10-50 characters'),
+	.notEmpty().withMessage('resourceDescription cannot be empty')
+    .isLength({ min: 10, max: 50 }).withMessage('resourceDescription must be 10-50 characters')
+    .matches(/^[a-zA-Z0-9\s\-_.,!?]+$/).withMessage('resourceDescription contains invalid characters')
+    .escape(),
 
   body('resourceAvailable')
-    .exists({ checkFalsy: true }).withMessage('resourceAvailable is required')
+    .exists().withMessage('resourceAvailable is required')
     .isBoolean().withMessage('resourceAvailable must be boolean')
-    .toBoolean(), // coercion
+    .toBoolean(),
 
   body('resourcePrice')
-    .exists({ checkFalsy: true }).withMessage('resourcePrice is required')
-    .isFloat({ min: 0 }).withMessage('resourcePrice must be a non-negative number')
-    .toFloat(), // coercion
+    .exists().withMessage('resourcePrice is required')
+    .isFloat({ min: 0.01 }).withMessage('resourcePrice must be greater than 0')
+    .toFloat(),
 
   body('resourcePriceUnit')
-    .exists({ checkFalsy: true }).withMessage('resourcePriceUnit is required')
+    .exists().withMessage('resourcePriceUnit is required')
     .isString().withMessage('resourcePriceUnit must be a string')
     .trim()
+    .notEmpty().withMessage('resourcePriceUnit cannot be empty')
     .isIn(['hour', 'day'])
-    .withMessage("resourcePriceUnit must be 'hour', 'day', 'week', or 'month'"),
+    .withMessage("resourcePriceUnit must be 'hour' or 'day'"),
 ];
 
 // POST /api/resources -> create (minimal)
@@ -108,8 +115,6 @@ app.post('/api/resources', resourceValidators, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Only create is implemented right now' });
   }
 
-  resourceAvailable = false;
-
   try {
     const insertSql = `
       INSERT INTO resources (name, description, available, price, price_unit)
@@ -117,10 +122,10 @@ app.post('/api/resources', resourceValidators, async (req, res) => {
       RETURNING id, name, description, available, price, price_unit, created_at
     `;
     const params = [
-      crypto.createHash('sha256').update(resourceName, 'utf8').digest('hex'),
+      resourceName,
       resourceDescription,
       Boolean(resourceAvailable),
-      Number(resourcePrice)*2,
+      resourcePrice,
       resourcePriceUnit
     ];
 
