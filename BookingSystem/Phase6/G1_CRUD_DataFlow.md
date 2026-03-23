@@ -7,41 +7,42 @@
 ```mermaid
 sequenceDiagram
     participant U as User (Browser)
-    participant F as Frontend (form.js / resources.js)
+    participant F as Frontend (form.js and resources.js)
     participant B as Backend (Express Route)
     participant V as express-validator
-    participant L as log.service.js
+    participant S as Resource Service
     participant DB as PostgreSQL
 
-    U->>F: Fill form and click Create
-    F->>F: Client-side validation (isResourceNameValid, isResourceDescriptionValid)
-    F->>B: POST /api/resources (JSON body)
+    U->>F: Submit form
+    F->>F: Client-side validation
+    F->>B: POST /api/resources (JSON)
 
-    B->>V: resourceValidators (name, description, available, price, priceUnit)
+    B->>V: Validate request
     V-->>B: Validation result
 
     alt Validation fails
-        B-->>F: 400 Bad Request { ok: false, errors: [{field, msg}] }
-        F-->>U: Show validation error message
+        B-->>F: 400 Bad Request + errors[]
+        F-->>U: Show validation message
     else Validation OK
-        B->>DB: INSERT INTO resources VALUES ($1..$5) RETURNING *
-        DB-->>B: Result
+        B->>S: create Resource(data)
+        S->>DB: INSERT INTO resources
+        DB-->>S: Result / Duplicate error
 
-        alt Duplicate name (pg error 23505)
-            B->>L: logEvent "Duplicate resource blocked"
-            B-->>F: 409 Conflict { ok: false, error: "Duplicate resource name" }
-            F-->>U: Show duplicate error message
-        else Insert success
-            B->>L: logEvent "Resource created (ID x)"
-            B-->>F: 201 Created { ok: true, data: { id, name, ... } }
-            F-->>U: Show success message, reload resource list
+        alt Duplicate
+            S-->>B: Duplicate detected
+            B-->>F: 409 Conflict
+            F-->>U: Show duplicate message
+        else Success
+            S-->>B: Created resource
+            B-->>F: 201 Created
+            F-->>U: Show success message
         end
     end
 ```
 
 ---
 
-# 2️⃣ READ — Resources (GET /api/resources and GET /api/resources/:id)
+# 2️⃣ READ — Resource (Sequence Diagram)
 
 ```mermaid
 sequenceDiagram
@@ -50,133 +51,93 @@ sequenceDiagram
     participant B as Backend (Express Route)
     participant DB as PostgreSQL
 
-    Note over U,F: Page load OR after create/update/delete triggers loadResources()
-
+    U->>F: Page loads / list refreshes
     F->>B: GET /api/resources
 
     B->>DB: SELECT * FROM resources ORDER BY created_at DESC
     DB-->>B: rows[]
 
     alt DB error
-        B-->>F: 500 Internal Server Error { ok: false, error: "Database error" }
-        F-->>U: renderResourceList([]) — empty list shown
+        B-->>F: 500 Internal Server Error
+        F-->>U: Show empty list
     else Success
-        B-->>F: 200 OK { ok: true, data: [ ...resources ] }
-        F-->>U: Render resource list (name buttons)
-    end
+        B-->>F: 200 OK + data[]
+        F-->>U: Render resource list
 
-    Note over U,F: User clicks a resource in the list → selectResource() called (no extra HTTP request, uses cache)
-
-    U->>F: Click resource in list
-    F->>F: Find resource in resourcesCache by ID
-    F-->>U: Populate form fields, switch to edit mode
-
-    Note over U,B: READ ONE — only triggered if ID is needed directly
-
-    F->>B: GET /api/resources/:id
-
-    alt Invalid ID (NaN)
-        B-->>F: 400 Bad Request { ok: false, error: "Invalid ID" }
-        F-->>U: Show error
-    else ID valid
-        B->>DB: SELECT * FROM resources WHERE id = $1
-        DB-->>B: row or empty
+        U->>F: Click a resource
+        F->>B: GET /api/resources/:id
 
         alt Not found
-            B-->>F: 404 Not Found { ok: false, error: "Resource not found" }
+            B-->>F: 404 Not Found
             F-->>U: Show not found message
         else Found
-            B-->>F: 200 OK { ok: true, data: { id, name, ... } }
-            F-->>U: Display resource details
+            B-->>F: 200 OK + data
+            F-->>U: Populate form, switch to edit mode
         end
     end
 ```
 
 ---
 
-# 3️⃣ UPDATE — Resource (PUT /api/resources/:id)
+# 3️⃣ UPDATE — Resource (Sequence Diagram)
 
 ```mermaid
 sequenceDiagram
     participant U as User (Browser)
-    participant F as Frontend (form.js / resources.js)
+    participant F as Frontend (form.js and resources.js)
     participant B as Backend (Express Route)
     participant V as express-validator
-    participant L as log.service.js
     participant DB as PostgreSQL
 
-    U->>F: Select resource from list, edit fields, click Update
-    F->>F: Client-side validation (name + description valid AND at least one field changed)
+    U->>F: Edit fields and click Update
+    F->>F: Client-side validation
+    F->>B: PUT /api/resources/:id (JSON)
 
-    alt No resource selected (missing ID)
-        F-->>U: Show error "missing resource ID. Select a resource first."
-    else ID present
-        F->>B: PUT /api/resources/:id (JSON body)
+    B->>V: Validate request
+    V-->>B: Validation result
 
-        alt Invalid ID (NaN)
-            B-->>F: 400 Bad Request { ok: false, error: "Invalid ID" }
-            F-->>U: Show error
-        else ID valid
-            B->>V: resourceValidators (name, description, available, price, priceUnit)
-            V-->>B: Validation result
+    alt Validation fails
+        B-->>F: 400 Bad Request + errors[]
+        F-->>U: Show validation message
+    else Validation OK
+        B->>DB: UPDATE resources WHERE id = $6 RETURNING *
+        DB-->>B: Result
 
-            alt Validation fails
-                B-->>F: 400 Bad Request { ok: false, errors: [{field, msg}] }
-                F-->>U: Show validation error message
-            else Validation OK
-                B->>DB: UPDATE resources SET ... WHERE id = $6 RETURNING *
-                DB-->>B: Result
-
-                alt Not found (rowCount = 0)
-                    B-->>F: 404 Not Found { ok: false, error: "Resource not found" }
-                    F-->>U: Show not found message
-                else Duplicate name (pg error 23505)
-                    B-->>F: 409 Conflict { ok: false, error: "Duplicate resource name" }
-                    F-->>U: Show duplicate error message
-                else Update success
-                    B->>L: logEvent "Resource updated (ID x)"
-                    B-->>F: 200 OK { ok: true, data: { id, name, ... } }
-                    F-->>U: Show success message, reload resource list
-                end
-            end
+        alt Not found
+            B-->>F: 404 Not Found
+            F-->>U: Show not found message
+        else Duplicate
+            B-->>F: 409 Conflict
+            F-->>U: Show duplicate message
+        else Success
+            B-->>F: 200 OK + updated data
+            F-->>U: Show success message
         end
     end
 ```
 
 ---
 
-# 4️⃣ DELETE — Resource (DELETE /api/resources/:id)
+# 4️⃣ DELETE — Resource (Sequence Diagram)
 
 ```mermaid
 sequenceDiagram
     participant U as User (Browser)
-    participant F as Frontend (form.js / resources.js)
+    participant F as Frontend (form.js and resources.js)
     participant B as Backend (Express Route)
-    participant L as log.service.js
     participant DB as PostgreSQL
 
-    U->>F: Select resource from list, click Delete
+    U->>F: Select resource and click Delete
+    F->>B: DELETE /api/resources/:id
 
-    alt No resource selected (missing ID)
-        F-->>U: Show error "missing resource ID. Select a resource first."
-    else ID present
-        F->>B: DELETE /api/resources/:id (no body)
+    B->>DB: DELETE FROM resources WHERE id = $1
+    DB-->>B: rowCount
 
-        alt Invalid ID (NaN)
-            B-->>F: 400 Bad Request { ok: false, error: "Invalid ID" }
-            F-->>U: Show error
-        else ID valid
-            B->>DB: DELETE FROM resources WHERE id = $1
-            DB-->>B: rowCount
-
-            alt Not found (rowCount = 0)
-                B-->>F: 404 Not Found { ok: false, error: "Resource not found" }
-                F-->>U: Show not found message
-            else Delete success
-                B->>L: logEvent "Resource deleted (ID x)"
-                B-->>F: 204 No Content (empty body)
-                F-->>U: Show success message, reload resource list, reset form to create mode
-            end
-        end
+    alt Not found
+        B-->>F: 404 Not Found
+        F-->>U: Show not found message
+    else Success
+        B-->>F: 204 No Content
+        F-->>U: Show success message, reload list
     end
 ```
